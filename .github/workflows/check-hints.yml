@@ -1,0 +1,44 @@
+name: Check hints
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"    # GitHub minimum is 5 min; runs are often delayed
+  workflow_dispatch:          # lets you run it manually from the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hints-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install browser
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Check hints
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          HINTS_SELECTOR: ${{ vars.HINTS_SELECTOR }}
+          TRACKER_SELECTOR: ${{ vars.TRACKER_SELECTOR }}
+          IGNORE_REGEX: ${{ vars.IGNORE_REGEX }}
+        run: python check_hints.py
+
+      - name: Save state
+        if: always()
+        run: |
+          git config user.name "hints-bot"
+          git config user.email "hints-bot@users.noreply.github.com"
+          git add -A state || true
+          git diff --cached --quiet || (git commit -m "Update hints state" && git push)
